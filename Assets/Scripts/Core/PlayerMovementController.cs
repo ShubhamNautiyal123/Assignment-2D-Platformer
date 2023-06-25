@@ -1,11 +1,12 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-
+using Assignment.State.Movement;
+using Assignment.Manager;
+using Assignment.Factory;
 
 namespace Assignment.Core
 {
     [RequireComponent(typeof(Rigidbody2D))]
+    [RequireComponent(typeof(AnimationController))]
     public class PlayerMovementController : MonoBehaviour
     {
 
@@ -13,10 +14,11 @@ namespace Assignment.Core
         [Header("Player Variables")]
         [SerializeField] float moveSpeed = 5f;
         [SerializeField] float jumpForce = 5f;
-        [SerializeField] GameObject gameover;
+        
         [SerializeField] Transform startBoundary;
         [SerializeField] Transform endBoundary;
-
+     
+       
         private Rigidbody2D _rb;
         private Vector3 _moveDirection;
         private bool _isJumping;
@@ -25,18 +27,27 @@ namespace Assignment.Core
         private bool _gameCompleted;
         
 
-        private Animator animator;
+        
 
         private SpriteRenderer spriteRenderer;
-      
+
+
+        //References for Movement State
+        IMovement iMovement;
+        JumpingMovement jumpingMovement;
+        HorizontalMovement horizontalMovement;
 
         #endregion
 
         #region Monobehaviours
         private void Awake()
         {
+            //Movement state
+            jumpingMovement = new JumpingMovement(jumpForce);
+            horizontalMovement = new HorizontalMovement(moveSpeed);
+            iMovement = horizontalMovement;
+
             _rb = GetComponent<Rigidbody2D>();
-            animator = GetComponent<Animator>();
             spriteRenderer = GetComponent<SpriteRenderer>();
         }
 
@@ -60,8 +71,8 @@ namespace Assignment.Core
             // Game over condition
             if (collision.gameObject.layer == 8)
             {
-                animator.Play("idle");
-                gameover.SetActive(true);
+                AnimationController.currentAnimState = AnimationController.AnimationState.Idle;
+                GameManager.Instance.GameLose?.Invoke();
                 _rb.velocity = new Vector2(0, 0);
                 _gameCompleted = true;
                 return;
@@ -74,7 +85,8 @@ namespace Assignment.Core
             }
             else if (collision.gameObject.layer == 9)
             {
-                Debug.LogError("Icrease coin");
+
+                GameManager.Instance.UpdateCoins(1);
                 Destroy(collision.gameObject);
             }
        
@@ -82,15 +94,14 @@ namespace Assignment.Core
            
         }
 
-       
+
         #endregion
 
         #region Methods
+
+       
         void MovementHandler(in float horizontalInput)
         {
-
-
-
             if (horizontalInput != 0f)
             {
                 _isRunning = true;
@@ -99,22 +110,22 @@ namespace Assignment.Core
             {
                 _isRunning = false;
             }
-            if (Input.GetKey(KeyCode.A))
-            {
-                spriteRenderer.flipX = true; // Face left when pressing 'A'
-            }
-            else if (Input.GetKey(KeyCode.D))
-            {
-                spriteRenderer.flipX = false; // Face right when pressing 'D'
-            }
-            // Move the player horizontally
-            _rb.velocity = new Vector2(horizontalInput * moveSpeed, _rb.velocity.y);
+            PlayerDirection();
+
+            // Movement
+            horizontalMovement.horizontalInput = horizontalInput;
+            iMovement = horizontalMovement;
+
+            iMovement.Execute(_rb);
+          
 
             // Jump
             if (IsGrounded() && Input.GetButtonDown("Jump") && !_isJumping)
             {
+                iMovement = jumpingMovement;
                 _isJumping = true;
-                _rb.AddForce(new Vector2(0f, jumpForce), ForceMode2D.Impulse);
+                iMovement.Execute(_rb);
+              
             }
             else
             {
@@ -125,7 +136,17 @@ namespace Assignment.Core
 
         }
 
-
+        void PlayerDirection()
+        {
+            if (Input.GetKey(KeyCode.A))
+            {
+                spriteRenderer.flipX = true; // Face left when pressing 'A'
+            }
+            else if (Input.GetKey(KeyCode.D))
+            {
+                spriteRenderer.flipX = false; // Face right when pressing 'D'
+            }
+        }
         bool IsGrounded()
         {
             float raycastDistance = 0.1f;
@@ -135,10 +156,11 @@ namespace Assignment.Core
         void UpdateAnimator()
         {
             if (_isRunning)
-                animator.Play("run");
+                AnimationController.currentAnimState=AnimationController.AnimationState.Run;
 
             else
-                animator.Play("idle");
+                AnimationController.currentAnimState = AnimationController.AnimationState.Idle;
+
 
         }
         private void CheckBoundary()
